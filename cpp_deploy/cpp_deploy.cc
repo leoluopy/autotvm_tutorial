@@ -303,6 +303,22 @@ static void scaleToDesiredPixels(cv::Mat &img) {
     }
 }
 
+static cv::Mat padding_image(cv::Mat &image) {
+    float w_h_rate = float(image.cols) / float(image.rows);
+    float desired_rate = 960.0 / 544.0;
+    if (w_h_rate > desired_rate) {
+        // padding vertical
+        int padding_size = int((float(image.cols) / desired_rate) - image.rows);
+        cv::vconcat(image, cv::Mat::zeros(padding_size, image.cols, CV_8UC3), image);
+    } else {
+        // padding horizontal
+        int padding_size = int(float(image.rows) * desired_rate - image.cols);
+        cv::hconcat(image, cv::Mat::zeros(image.rows, padding_size, CV_8UC3), image);
+    };
+    cv::resize(image,cv::Size(960,544));
+    return image;
+}
+
 int main(int argc, char **argv) {
 
     TVMCenterFace centerface = TVMCenterFace();
@@ -313,8 +329,7 @@ int main(int argc, char **argv) {
 
     for (int i = 0; i < filesPath.size(); i++) {
         cv::Mat frame = cv::imread(filesPath[i]);
-        // centerPose 处理50W像素
-        scaleToDesiredPixels(frame);
+        padding_image(frame);
         centerface.inference(frame, faces, true);
     }
 
