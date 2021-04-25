@@ -9,7 +9,7 @@ from tvm import relay, autotvm
 from tvm.contrib import graph_executor
 import tvm.contrib.graph_executor as runtime
 
-from centerface import InitCenterFacePy, GetBoxLandMarks
+from centerface import InitCenterFacePy, GetBoxLandMarks, centerFacePreprocess, centerFacePostProcess
 from tune_relay_cuda import tune_tasks
 
 
@@ -38,14 +38,13 @@ def relay_import_from_torch(model, direct_to_mod_param=False):
 
 def case_default_relay_centerFace():
     model = InitCenterFacePy()
-    frame = cv2.imread("../../ims/scene.jpg")
-    # frame = cv2.imread("../../data_set/demo10set/13.jpg")
-    dets, lms, poses = GetBoxLandMarks(frame)
-    # visulise_center_pose(dets, lms, poses, frame)
+    frame = cv2.imread("../ims/6.jpg")
+    dets, lms = GetBoxLandMarks(frame)
+    # centerFaceWriteOut(dets, lms, frame)
 
     tvm_centerFaceModel, dev = relay_import_from_torch(model.module.cpu())
 
-    input_tensor, img_h_new, img_w_new, scale_w, scale_h = centerFacePreprocess(frame)
+    input_tensor, img_h_new, img_w_new, scale_w, scale_h, raw_scale = centerFacePreprocess(frame)
     tvm_centerFaceModel.set_input("input0", tvm.nd.array(input_tensor.astype("float32")))
     tvm_centerFaceModel.run()
     heatmap, scale, offset, lms = torch.tensor(tvm_centerFaceModel.get_output(0).asnumpy()), \
@@ -53,8 +52,9 @@ def case_default_relay_centerFace():
                                   torch.tensor(tvm_centerFaceModel.get_output(2).asnumpy()), \
                                   torch.tensor(tvm_centerFaceModel.get_output(3).asnumpy())
 
-    dets, lms, poses = centerFacePostProcess(heatmap, scale, offset, lms, img_h_new, img_w_new, scale_w, scale_h)
-    # visulise_center_pose(dets, lms, poses, frame)
+    dets, lms = centerFacePostProcess(heatmap, scale, offset, lms, img_h_new, img_w_new, scale_w, scale_h,
+                                      raw_scale)
+    # centerFaceWriteOut(dets, lms, frame)
 
     print("start profiling the time")
     tvm_centerFaceModel.set_input("input0", tvm.nd.array(input_tensor.astype("float32")))
