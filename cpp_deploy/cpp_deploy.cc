@@ -144,9 +144,10 @@ static void decode(cv::Mat &heatmap, cv::Mat &scale, cv::Mat &offset, cv::Mat &l
 
 class TVMCenterFace {
 public:
-    TVMCenterFace(const std::string lib_path = "./centerface_tvm.so") {
+    TVMCenterFace(const std::string lib_path = "../../centerFace_relay.so") {
         DLDevice dev{kDLGPU, 0};
 
+        // for windows , the suffix should be dll
         mod_factory = tvm::runtime::Module::LoadFromFile(lib_path, "so");
         gmod = mod_factory.GetFunction("default")(dev);
         set_input = gmod.GetFunction("set_input");
@@ -159,9 +160,6 @@ public:
         scale_gpu = tvm::runtime::NDArray::Empty({1, 2, 136, 240}, DLDataType{kDLFloat, 32, 1}, dev);
         offset_gpu = tvm::runtime::NDArray::Empty({1, 2, 136, 240}, DLDataType{kDLFloat, 32, 1}, dev);
         lms_gpu = tvm::runtime::NDArray::Empty({1, 10, 136, 240}, DLDataType{kDLFloat, 32, 1}, dev);
-        yaw_gpu = tvm::runtime::NDArray::Empty({1, 20, 136, 240}, DLDataType{kDLFloat, 32, 1}, dev);
-        pitch_gpu = tvm::runtime::NDArray::Empty({1, 20, 136, 240}, DLDataType{kDLFloat, 32, 1}, dev);
-        roll_gpu = tvm::runtime::NDArray::Empty({1, 20, 136, 240}, DLDataType{kDLFloat, 32, 1}, dev);
     }
 
     int inference(cv::Mat frame, std::vector<FaceInfo> &faces, bool visulise = false) {
@@ -189,16 +187,10 @@ public:
             get_output(1, scale_gpu);
             get_output(2, offset_gpu);
             get_output(3, lms_gpu);
-            get_output(4, yaw_gpu);
-            get_output(5, pitch_gpu);
-            get_output(6, roll_gpu);
             tvm::runtime::NDArray heatmap_cpu = heatmap_gpu.CopyTo(DLDevice{kDLCPU, 0});
             tvm::runtime::NDArray scale_cpu = scale_gpu.CopyTo(DLDevice{kDLCPU, 0});
             tvm::runtime::NDArray offset_cpu = offset_gpu.CopyTo(DLDevice{kDLCPU, 0});
             tvm::runtime::NDArray lms_cpu = lms_gpu.CopyTo(DLDevice{kDLCPU, 0});
-            tvm::runtime::NDArray yaw_cpu = yaw_gpu.CopyTo(DLDevice{kDLCPU, 0});
-            tvm::runtime::NDArray pitch_cpu = pitch_gpu.CopyTo(DLDevice{kDLCPU, 0});
-            tvm::runtime::NDArray roll_cpu = roll_gpu.CopyTo(DLDevice{kDLCPU, 0});
 
 
             int dimensionHeatMap[] = {1, 1, h / 4, w / 4};
@@ -285,24 +277,6 @@ static void getAllFilesPath(std::string path, std::vector<std::string> &filesPat
     closedir(dir);
 }
 
-static void scaleToDesiredPixels(cv::Mat &img) {
-    const float PIXNUM = 500000.0;
-    int dw = -1, dh = -1;
-    float scale_w = 1.0, scale_h = 1.0;
-    if (img.rows * img.cols > PIXNUM || img.rows % 32 != 0 || img.cols % 32 != 0) {
-        float f = 1.0;
-        if (img.rows * img.cols > PIXNUM)
-            f = pow(PIXNUM / (img.rows * img.cols), 0.5);
-        dw = int(ceil((img.cols * f) / 32.0)) * 32;
-        dh = int(ceil((img.rows * f) / 32.0)) * 32;
-        scale_w = (float) img.cols / (float) dw;
-        scale_h = (float) img.rows / (float) dh;
-        resize(img, img, cv::Size(dw, dh));
-//        std::cout << " pic Size Resized To: " << img.cols << "," << img.rows
-//                  << std::endl;
-    }
-}
-
 static cv::Mat padding_image(cv::Mat &image) {
     float w_h_rate = float(image.cols) / float(image.rows);
     float desired_rate = 960.0 / 544.0;
@@ -314,8 +288,8 @@ static cv::Mat padding_image(cv::Mat &image) {
         // padding horizontal
         int padding_size = int(float(image.rows) * desired_rate - image.cols);
         cv::hconcat(image, cv::Mat::zeros(image.rows, padding_size, CV_8UC3), image);
-    };
-    cv::resize(image,cv::Size(960,544));
+    }
+    cv::resize(image, image, cv::Size(960, 544));
     return image;
 }
 
@@ -325,7 +299,7 @@ int main(int argc, char **argv) {
 
     std::vector<FaceInfo> faces;
     std::vector<std::string> filesPath;
-    getAllFilesPath("beibei_case1", filesPath);
+    getAllFilesPath("../../ims/", filesPath);
 
     for (int i = 0; i < filesPath.size(); i++) {
         cv::Mat frame = cv::imread(filesPath[i]);
