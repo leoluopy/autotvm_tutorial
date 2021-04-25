@@ -365,10 +365,7 @@ def InitCenterFacePy(modelPath=os.path.dirname(os.path.abspath(__file__)) + "/ce
     return g_model
 
 
-def GetBoxLandMarks(bgrImg):
-    global g_model
-    if g_model == {}:
-        InitCenterFacePy()
+def centerFacePreprocess(bgrImg):
     h = bgrImg.shape[0]
     w = bgrImg.shape[1]
     maxSide = max(h, w)
@@ -384,11 +381,10 @@ def GetBoxLandMarks(bgrImg):
     # input_tensor = np.zeros((1, 3, 800, 800), dtype=np.float32)
     input_tensor = cv2.dnn.blobFromImage(bgrImg, scalefactor=1.0, size=(img_w_new, img_h_new), mean=(0, 0, 0),
                                          swapRB=True, crop=False)
-    start = time.time()
-    out = g_model(torch.tensor(input_tensor).cuda())
-    print("    center face det cost :{}".format(time.time() - start))
+    return input_tensor, img_h_new, img_w_new, scale_w, scale_h, raw_scale
 
-    heatmap, scale, offset, lms = out
+
+def centerFacePostProcess(heatmap, scale, offset, lms, img_h_new, img_w_new, scale_w, scale_h, raw_scale):
     dets, lms = postprocess(heatmap.detach().cpu().numpy(), lms.detach().cpu().numpy(), offset.detach().cpu().numpy(),
                             scale.detach().cpu().numpy(), 0.35, img_h_new, img_w_new, scale_w, scale_h)
 
@@ -413,11 +409,22 @@ def GetBoxLandMarks(bgrImg):
     return boundingBoxes, torch.tensor(landmarks)
 
 
-if __name__ == '__main__':
-    InitCenterFacePy()
-    frame = cv2.imread("ims/1.jpg")
-    dets, lms = GetBoxLandMarks(frame)
+def GetBoxLandMarks(bgrImg):
+    global g_model
+    if g_model == {}:
+        InitCenterFacePy()
 
+    input_tensor, img_h_new, img_w_new, scale_w, scale_h, raw_scale = centerFacePreprocess(bgrImg)
+
+    start = time.time()
+    out = g_model(torch.tensor(input_tensor).cuda())
+    print("    center face det cost :{}".format(time.time() - start))
+
+    heatmap, scale, offset, lms = out
+    return centerFacePostProcess(heatmap, scale, offset, lms, img_h_new, img_w_new, scale_w, scale_h, raw_scale)
+
+
+def centerFaceWriteOut(dets, lms, frame):
     for det in dets:
         boxes, score = det[:4], det[4]
         cv2.rectangle(frame, (int(boxes[0]), int(boxes[1])), (int(boxes[2]), int(boxes[3])), (2, 255, 0), 1)
@@ -427,4 +434,13 @@ if __name__ == '__main__':
         for i in range(0, 5):
             cv2.circle(frame, (int(lm[i * 2]), int(lm[i * 2 + 1])), 2, (0, 0, 255), -1)
 
-    cv2.imwrite("1_{}.jpg".format(time.time()), frame)
+    cv2.imwrite("{}.jpg".format(time.time()), frame)
+
+
+if __name__ == '__main__':
+    InitCenterFacePy()
+    frame = cv2.imread("ims/6.jpg")
+    dets, lms = GetBoxLandMarks(frame)
+
+    centerFaceWriteOut(dets, lms, frame)
+
